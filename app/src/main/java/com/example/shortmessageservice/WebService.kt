@@ -13,15 +13,21 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import fi.iki.elonen.NanoHTTPD.newFixedLengthResponse
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.IOException
+import java.util.Properties
 
 class WebService : Service() {
-
+    private var apiKey: String = ""
     private var server: NanoHTTPD? = null
     private var messageSender: MessageSender = MessageSender()
     private lateinit var wakeLock: PowerManager.WakeLock
     override fun onCreate() {
         super.onCreate()
 
+        apiKey = loadApiKeyFromConfig()
+        println(apiKey)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WebService::WakeLock")
     }
@@ -36,6 +42,16 @@ class WebService : Service() {
         if (server == null) {
             server = object : NanoHTTPD(8080) {
                 override fun serve(session: IHTTPSession): Response {
+
+                    val apiKeyHeader = session.headers["api-key"]
+                    if (apiKeyHeader == null || apiKeyHeader != apiKey) {
+                        return newFixedLengthResponse(
+                            Response.Status.UNAUTHORIZED,
+                            NanoHTTPD.MIME_PLAINTEXT,
+                            "Unauthorized access"
+                        )
+                    }
+
                     val response = when {
                         (session.method == Method.GET) -> handleGetRequest(session)
                         (session.method == Method.POST && session.uri == "/sendMessage") -> handlePostEndpoint1(session)
@@ -66,6 +82,22 @@ class WebService : Service() {
             wakeLock.release()
         }
         super.onDestroy()
+    }
+
+    private fun loadApiKeyFromConfig(): String {
+        val assetManager = applicationContext.assets
+        try {
+            val inputStream = assetManager.open("appSettings.json")
+            val json = inputStream.bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(json)
+            return jsonObject.optString("api_key", "")
+        } catch (e: IOException) {
+            e.printStackTrace()
+        } catch (e: JSONException) {
+            e.printStackTrace()
+        }
+        //default api key
+        return DEFAULT_API_KEY
     }
 
     private fun sendNotification(title: String, content: String) {
@@ -160,6 +192,7 @@ class WebService : Service() {
     companion object {
         private const val CHANNEL_ID = "WebServiceChannel"
         private const val NOTIFICATION_ID = 1
+        const val DEFAULT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
 
     }
 }
