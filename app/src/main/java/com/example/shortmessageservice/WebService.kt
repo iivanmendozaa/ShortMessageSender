@@ -82,6 +82,8 @@ class WebService : Service() {
             wakeLock.release()
         }
         super.onDestroy()
+        val restartIntent = Intent(applicationContext, WebService::class.java)
+        startService(restartIntent)
     }
 
     private fun loadApiKeyFromConfig(): String {
